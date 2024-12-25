@@ -16,33 +16,45 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Task } from '@/types';
+
+interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  priority: 'low' | 'medium' | 'high';
+  startDate?: Date;
+  duration: number;
+  completed?: boolean;
+  projectId?: string;
+}
 
 interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  task?: Task;
+  task: Task | null;
   boardId: string;
+  onSubmit: (task: Task) => void;
 }
 
-export function TaskDialog({ open, onOpenChange, task, boardId }: TaskDialogProps) {
+export function TaskDialog({ open, onOpenChange, task, boardId, onSubmit }: TaskDialogProps) {
   const [formData, setFormData] = useState({
     title: task?.title || '',
     description: task?.description || '',
-    priority: task?.priority || 'medium',
+    priority: task?.priority || 'medium' as const,
     startDate: task?.startDate ? new Date(task.startDate).toISOString().slice(0, 16) : '',
     duration: task?.duration || 30,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const taskData = {
+    const taskData: Task = {
+      id: task?.id || crypto.randomUUID(),
       ...formData,
       startDate: formData.startDate ? new Date(formData.startDate) : undefined,
-      boardId,
+      completed: task?.completed || false,
+      projectId: task?.projectId,
     };
-    // Add task creation/update logic
-    onOpenChange(false);
+    onSubmit(taskData);
   };
 
   return (

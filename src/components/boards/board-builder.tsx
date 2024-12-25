@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { useBoardStore } from '@/lib/store/board-store';
-import { Button } from '@/components/ui/button';
-import { TaskCard } from '@/components/boards/task-card';
-import { Timeline } from '@/components/boards/timeline';
+import { useBoardStore } from '../../lib/store/board-store';
+import { Button } from '../ui/button';
+import { TaskCard } from './task-card';
+import { Timeline } from './timeline';
 import { LayoutGrid, Calendar } from 'lucide-react';
 
 interface BoardBuilderProps {
@@ -54,7 +54,7 @@ export function BoardBuilder({ boardId }: BoardBuilderProps) {
         </Button>
       </div>
       {showTimeline ? (
-        <Timeline tasks={board.tasks} onTaskMove={handleDragEnd} />
+        <Timeline tasks={board.tasks} onTaskMove={handleDragEnd} onDropFromSource={() => {}} />
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="tasks">
@@ -89,4 +89,4 @@ export function BoardBuilder({ boardId }: BoardBuilderProps) {
       )}
     </div>
   );
-} 
+}
