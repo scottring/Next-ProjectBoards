@@ -1,126 +1,107 @@
-import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+'use client';
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  priority: 'low' | 'medium' | 'high';
-  startDate?: Date;
-  duration: number;
-  completed?: boolean;
-  projectId?: string;
-}
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Task } from '@/types';
 
 interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: Task | null;
-  boardId: string;
   onSubmit: (task: Task) => void;
 }
 
-export function TaskDialog({ open, onOpenChange, task, boardId, onSubmit }: TaskDialogProps) {
-  const [formData, setFormData] = useState({
-    title: task?.title || '',
-    description: task?.description || '',
-    priority: task?.priority || 'medium' as const,
-    startDate: task?.startDate ? new Date(task.startDate).toISOString().slice(0, 16) : '',
-    duration: task?.duration || 30,
-  });
+export function TaskDialog({ open, onOpenChange, task, onSubmit }: TaskDialogProps) {
+  const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [duration, setDuration] = useState(30);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (task) {
+      setTitle(task.title);
+      setPriority(task.priority);
+      setDuration(task.duration);
+    } else {
+      setTitle('');
+      setPriority('medium');
+      setDuration(30);
+    }
+  }, [task]);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const taskData: Task = {
-      id: task?.id || crypto.randomUUID(),
-      ...formData,
-      startDate: formData.startDate ? new Date(formData.startDate) : undefined,
+    onSubmit({
+      id: task?.id || '',
+      title,
+      priority,
+      duration,
+      startTime: task?.startTime,
+      day: task?.day,
       completed: task?.completed || false,
       projectId: task?.projectId,
-    };
-    onSubmit(taskData);
+      userId: task?.userId || '',
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {task ? 'Edit Task' : 'Create Task'}
-          </DialogTitle>
+          <DialogTitle>{task?.id ? 'Edit Task' : 'New Task'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Title</label>
+          <div>
+            <label htmlFor="title" className="text-sm font-medium">
+              Title
+            </label>
             <Input
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Task title"
               required
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Description</label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          <div>
+            <label htmlFor="priority" className="text-sm font-medium">
+              Priority
+            </label>
+            <Select value={priority} onValueChange={(value: 'low' | 'medium' | 'high') => setPriority(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="duration" className="text-sm font-medium">
+              Duration (minutes)
+            </label>
+            <Input
+              id="duration"
+              type="number"
+              min={15}
+              step={15}
+              value={duration}
+              onChange={(e) => setDuration(parseInt(e.target.value))}
+              required
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Priority</label>
-              <Select
-                value={formData.priority}
-                onValueChange={(value) => setFormData({ ...formData, priority: value as Task['priority'] })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Duration (minutes)</label>
-              <Select
-                value={formData.duration.toString()}
-                onValueChange={(value) => setFormData({ ...formData, duration: parseInt(value) })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15</SelectItem>
-                  <SelectItem value="30">30</SelectItem>
-                  <SelectItem value="45">45</SelectItem>
-                  <SelectItem value="60">60</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="submit">
-              {task ? 'Update' : 'Create'} Task
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
             </Button>
-          </DialogFooter>
+            <Button type="submit">
+              {task?.id ? 'Update' : 'Create'}
+            </Button>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

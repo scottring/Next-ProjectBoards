@@ -2,25 +2,26 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const router = useRouter();
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signUp, signInWithGoogle } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await signIn(email, password);
+      await signUp(email, password);
       router.push('/boards');
     } catch (error) {
-      setError('Invalid email or password');
+      setError('Could not create account');
     }
   };
 
@@ -38,7 +39,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow">
         <div>
           <h2 className="text-center text-3xl font-bold tracking-tight">
-            Sign in to your account
+            Create your account
           </h2>
         </div>
 
@@ -73,7 +74,7 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 placeholder="Password"
                 value={password}
@@ -84,7 +85,7 @@ export default function LoginPage() {
 
           <div>
             <Button type="submit" className="w-full">
-              Sign in
+              Sign up
             </Button>
           </div>
         </form>
@@ -122,8 +123,17 @@ export default function LoginPage() {
                 fill="#EA4335"
               />
             </svg>
-            Sign in with Google
+            Sign up with Google
           </Button>
+        </div>
+
+        <div className="mt-6 text-center text-sm">
+          <p className="text-gray-600">
+            Already have an account?{' '}
+            <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              Sign in
+            </Link>
+          </p>
         </div>
       </div>
     </div>

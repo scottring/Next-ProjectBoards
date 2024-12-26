@@ -1,44 +1,19 @@
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  avatar?: string;
-}
-
 export interface Task {
   id: string;
   title: string;
-  description?: string;
   priority: 'low' | 'medium' | 'high';
-  startDate?: Date;
-  duration?: number;
-  assignees?: User[];
+  startTime?: string;
+  duration: number;
+  day?: string;
+  completed?: boolean;
+  projectId?: string;
+  userId: string;
 }
 
-export interface Board {
+export interface Project {
   id: string;
-  name: string;
-  description: string;
+  title: string;
   tasks: Task[];
-  settings: {
-    layout: {
-      showSidebar: boolean;
-      showTimeline: boolean;
-    };
-  };
-}
-
-export interface Template {
-  id: string;
-  name: string;
-  description: string;
-  thumbnail: string;
-  category: string;
-  tasks: Task[];
-  settings: {
-    layout: {
-      showSidebar: boolean;
-      showTimeline: boolean;
-    };
-  };
+  progress: number;
+  userId: string;
 } 
