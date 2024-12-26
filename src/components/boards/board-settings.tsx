@@ -1,97 +1,145 @@
-import { useState } from 'react';
-import { Board, BoardMember } from '@/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Users, Settings, Lock } from 'lucide-react';
+'use client';
 
-interface BoardSettingsProps {
-  board: Board;
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Settings, Users, Bell } from 'lucide-react';
+
+interface BoardMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'owner' | 'editor' | 'viewer';
+  avatar?: string;
 }
 
-export function BoardSettings({ board }: BoardSettingsProps) {
-  const [formData, setFormData] = useState({
-    name: board.name,
-    description: board.description,
-    settings: board.settings,
-  });
+interface BoardSettings {
+  id: string;
+  title: string;
+  description: string;
+  visibility: 'private' | 'public';
+  notifications: boolean;
+  members: BoardMember[];
+}
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    // Add board update logic here
+interface BoardSettingsProps {
+  settings: BoardSettings;
+  onUpdate: (settings: BoardSettings) => void;
+}
+
+export function BoardSettings({ settings, onUpdate }: BoardSettingsProps) {
+  const [currentSettings, setCurrentSettings] = useState(settings);
+
+  const handleChange = (key: keyof BoardSettings, value: any) => {
+    const updated = { ...currentSettings, [key]: value };
+    setCurrentSettings(updated);
+    onUpdate(updated);
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Board Settings</CardTitle>
-        <CardDescription>
-          Configure board options and permissions
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-medium flex items-center gap-2">
+          <Settings className="h-5 w-5" />
+          General Settings
+        </h2>
+        <div className="mt-4 space-y-4">
           <div className="space-y-2">
-            <Label>Board Name</Label>
+            <Label htmlFor="title">Board Title</Label>
             <Input
-              value={formData.name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                setFormData({ ...formData, name: e.target.value })
-              }
-              required
+              id="title"
+              value={currentSettings.title}
+              onChange={(e) => handleChange('title', e.target.value)}
             />
           </div>
-
           <div className="space-y-2">
-            <Label>Description</Label>
+            <Label htmlFor="description">Description</Label>
             <Input
-              value={formData.description}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
-                setFormData({ ...formData, description: e.target.value })
-              }
+              id="description"
+              value={currentSettings.description}
+              onChange={(e) => handleChange('description', e.target.value)}
             />
           </div>
-
-          <div className="space-y-4">
-            <h3 className="font-medium">Layout Settings</h3>
-            <div className="flex items-center justify-between">
-              <Label>Show Sidebar</Label>
-              <Switch
-                checked={formData.settings.layout.showSidebar}
-                onCheckedChange={(checked: boolean) =>
-                  setFormData({
-                    ...formData,
-                    settings: {
-                      ...formData.settings,
-                      layout: { ...formData.settings.layout, showSidebar: checked }
-                    }
-                  })
-                }
-              />
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Board Visibility</Label>
+              <div className="text-sm text-gray-500">
+                {currentSettings.visibility === 'private' ? 'Only members can access' : 'Anyone can access'}
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <Label>Show Timeline</Label>
-              <Switch
-                checked={formData.settings.layout.showTimeline}
-                onCheckedChange={(checked: boolean) =>
-                  setFormData({
-                    ...formData,
-                    settings: {
-                      ...formData.settings,
-                      layout: { ...formData.settings.layout, showTimeline: checked }
-                    }
-                  })
-                }
-              />
-            </div>
+            <Switch
+              checked={currentSettings.visibility === 'public'}
+              onCheckedChange={(checked) => handleChange('visibility', checked ? 'public' : 'private')}
+            />
           </div>
-          
-          <Button type="submit" className="w-full">Save Changes</Button>
-        </form>
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-medium flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Members
+        </h2>
+        <div className="mt-4 space-y-4">
+          {currentSettings.members.map(member => (
+            <div key={member.id} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {member.avatar ? (
+                  <img src={member.avatar} alt={member.name} className="h-8 w-8 rounded-full" />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                    {member.name[0]}
+                  </div>
+                )}
+                <div>
+                  <div className="font-medium">{member.name}</div>
+                  <div className="text-sm text-gray-500">{member.email}</div>
+                </div>
+              </div>
+              <select
+                value={member.role}
+                onChange={(e) => {
+                  const updatedMembers = currentSettings.members.map(m =>
+                    m.id === member.id ? { ...m, role: e.target.value as BoardMember['role'] } : m
+                  );
+                  handleChange('members', updatedMembers);
+                }}
+                className="text-sm border rounded px-2 py-1"
+              >
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="owner">Owner</option>
+              </select>
+            </div>
+          ))}
+          <Button variant="outline" className="w-full">
+            Add Member
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-medium flex items-center gap-2">
+          <Bell className="h-5 w-5" />
+          Notifications
+        </h2>
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Email Notifications</Label>
+              <div className="text-sm text-gray-500">
+                Receive updates about board activity
+              </div>
+            </div>
+            <Switch
+              checked={currentSettings.notifications}
+              onCheckedChange={(checked) => handleChange('notifications', checked)}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 } 

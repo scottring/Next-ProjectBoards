@@ -164,6 +164,13 @@ export function ProjectBoard() {
       const newHeight = Math.max(48, resizeRef.current.startHeight + diff); // Minimum height of 48px (30 minutes)
       const newDuration = Math.round((newHeight / 16) * 15); // 16px = 15 minutes
 
+      // Update the element's height directly for immediate visual feedback
+      const element = document.querySelector(`[data-task-id="${resizingTask.id}"]`) as HTMLElement;
+      if (element) {
+        element.style.height = `${newHeight}px`;
+      }
+
+      // Update the task data
       if (resizingTask.projectId) {
         setProjects(projects.map(project => {
           if (project.id === resizingTask.projectId) {
@@ -313,6 +320,57 @@ export function ProjectBoard() {
     setEditingProject(null);
   };
 
+  const handleProjectDrop = (projectId: string, e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.style.backgroundColor = '';
+    
+    if (!draggingTask) return;
+
+    // Remove from timeline tasks
+    setTasks(prev => prev.filter(t => t.id !== draggingTask.id));
+
+    // Add to project
+    setProjects(projects.map(project => {
+      if (project.id === projectId) {
+        return {
+          ...project,
+          tasks: [...project.tasks, { ...draggingTask, projectId, startTime: undefined, day: undefined }],
+        };
+      }
+      return project;
+    }));
+    
+    setDraggingTask(null);
+  };
+
+  const handleUnassignedDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.style.backgroundColor = '';
+    
+    if (!draggingTask) return;
+
+    // Remove from timeline tasks if it's there
+    setTasks(prev => {
+      const timelineTasks = prev.filter(t => t.id !== draggingTask.id);
+      return [...timelineTasks, { ...draggingTask, projectId: undefined, startTime: undefined, day: undefined }];
+    });
+
+    // If it's in a project, remove it
+    if (draggingTask.projectId) {
+      setProjects(projects.map(project => {
+        if (project.id === draggingTask.projectId) {
+          return {
+            ...project,
+            tasks: project.tasks.filter(task => task.id !== draggingTask.id),
+          };
+        }
+        return project;
+      }));
+    }
+    
+    setDraggingTask(null);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Enhanced Header */}
@@ -379,9 +437,14 @@ export function ProjectBoard() {
         <div className="w-72 border-r bg-white overflow-y-auto">
           <div className="p-4">
             {/* Unassigned Tasks */}
-            <div className="mb-6">
+            <div 
+              className="mb-6"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleUnassignedDrop}
+            >
               <h2 className="text-sm font-semibold text-gray-500 mb-2">UNASSIGNED TASKS</h2>
-              {tasks.map(task => (
+              {tasks.filter(t => !t.startTime).map(task => (
                 <div
                   key={task.id}
                   draggable
@@ -411,7 +474,13 @@ export function ProjectBoard() {
                 </Button>
               </div>
               {projects.map(project => (
-                <div key={project.id} className="border rounded-lg p-3">
+                <div 
+                  key={project.id} 
+                  className="border rounded-lg p-3"
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleProjectDrop(project.id, e)}
+                >
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium">{project.title}</h3>
                     <div className="flex items-center gap-2">
@@ -557,9 +626,10 @@ export function ProjectBoard() {
                         return (
                           <div
                             key={task.id}
+                            data-task-id={task.id}
                             draggable
                             onDragStart={(e) => handleDragStart(task, e)}
-                            className="absolute left-0 right-0 bg-blue-100 border border-blue-300 rounded px-2 text-xs cursor-move group"
+                            className="absolute left-0 right-0 bg-blue-100 border border-blue-300 rounded px-2 text-xs cursor-move group transition-[height]"
                             style={{
                               top: `${top}px`,
                               height: `${height}px`,
@@ -584,7 +654,7 @@ export function ProjectBoard() {
                             </div>
                             {/* Resize handle */}
                             <div
-                              className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-blue-500"
+                              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-500 group-hover:opacity-100 opacity-0 transition-opacity"
                               onMouseDown={(e) => handleResizeStart(task, e)}
                             />
                           </div>
