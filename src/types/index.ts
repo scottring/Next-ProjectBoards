@@ -1,13 +1,26 @@
+export interface TaskLocation {
+  type: 'timeline' | 'project' | 'unassigned';
+  projectId?: string;
+  day?: string;
+  startTime?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
   priority: 'low' | 'medium' | 'high';
-  startTime?: string;
   duration: number;
-  day?: string;
   completed?: boolean;
-  projectId?: string;
   userId: string;
+  // Location properties
+  projectId?: string;
+  day?: string;
+  startTime?: string;
+}
+
+export interface DragItem {
+  task: Task;
+  sourceLocation: TaskLocation;
 }
 
 export interface Project {

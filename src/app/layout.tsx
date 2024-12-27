@@ -4,6 +4,7 @@ import { MainNav } from "@/components/layout/main-nav"
 import { UserNav } from "@/components/layout/user-nav"
 import './globals.css'
 import { AuthProvider } from '@/contexts/auth-context'
+import { Toaster } from 'react-hot-toast'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -35,6 +36,7 @@ export default function RootLayout({
             </header>
             <main className="container py-8">{children}</main>
           </div>
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

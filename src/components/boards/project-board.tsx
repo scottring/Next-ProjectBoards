@@ -8,8 +8,10 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
 import { getProjects, getTasks, addProject, updateProject, deleteProject, addTask, updateTask, deleteTask } from '@/lib/firestore';
-import { Project, Task } from '@/types';
+import { Project, Task, TaskLocation } from '@/types';
 import dynamic from 'next/dynamic';
+import { useTaskDrag } from '@/hooks/use-task-drag';
+import { toast } from 'react-hot-toast';
 
 const TaskDialog = dynamic(() => import('./task-dialog').then(mod => mod.TaskDialog), {
   ssr: false,
@@ -32,6 +34,29 @@ export function ProjectBoard() {
   const [error, setError] = useState<string | null>(null);
 
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  const {
+    dragItem,
+    dropTarget,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd
+  } = useTaskDrag();
+
+  // Add this helper to determine if a drop is valid
+  const isValidDrop = (location: TaskLocation) => {
+    if (!dragItem) return false;
+    
+    // Prevent dropping on same location
+    const source = dragItem.sourceLocation;
+    if (source.type === location.type && 
+        source.projectId === location.projectId && 
+        source.day === location.day) {
+      return false;
+    }
+
+    return true;
+  };
 
   // Load initial data
   useEffect(() => {
@@ -215,68 +240,6 @@ export function ProjectBoard() {
     return slots;
   };
 
-  const handleDragStart = (task: Task, e: React.DragEvent<HTMLDivElement>) => {
-    setDraggingTask(task);
-    e.dataTransfer.setData('text/plain', task.id);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDrop = async (time: string, day: string, e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.currentTarget.style.backgroundColor = '';
-    
-    if (!draggingTask || !user) return;
-
-    try {
-      // Create a new task object without projectId
-      const { projectId, ...taskWithoutProject } = draggingTask;
-      const updates = {
-        ...taskWithoutProject,
-        startTime: time,
-        day,
-      };
-
-      await updateTask(draggingTask.id, updates);
-
-      // If it's a project task, remove it from the project
-      if (draggingTask.projectId) {
-        setProjects(projects.map(project => {
-          if (project.id === draggingTask.projectId) {
-            return {
-              ...project,
-              tasks: project.tasks.filter(task => task.id !== draggingTask.id),
-            };
-          }
-          return project;
-        }));
-      }
-
-      // Update the task in the unassigned tasks list
-      setTasks(prev => {
-        const exists = prev.some(t => t.id === draggingTask.id);
-        if (exists) {
-          return prev.map(t => t.id === draggingTask.id ? updates : t);
-        } else {
-          return [...prev, updates];
-        }
-      });
-    } catch (err) {
-      setError('Failed to move task');
-      console.error(err);
-    }
-    
-    setDraggingTask(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.currentTarget.style.backgroundColor = '';
-  };
-
   const handleResizeStart = (task: Task, e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     const element = e.currentTarget.parentElement;
@@ -437,6 +400,116 @@ export function ProjectBoard() {
     setDraggingTask(null);
   };
 
+  const handleDrop = async (location: TaskLocation) => {
+    if (!dragItem || !isValidDrop(location)) {
+      handleDragEnd();
+      return;
+    }
+
+    try {
+      // Create base task data
+      const baseTask = {
+        title: dragItem.task.title,
+        priority: dragItem.task.priority,
+        duration: dragItem.task.duration,
+        userId: dragItem.task.userId,
+        completed: dragItem.task.completed || false
+      };
+
+      // Format the day to match the expected format
+      const formattedDay = location.day ? format(new Date(location.day), 'EEE, MMM d') : undefined;
+
+      // Add location-specific fields only if they have values
+      const updatedTask = {
+        ...baseTask,
+        ...(location.projectId && { projectId: location.projectId }),
+        ...(formattedDay && { day: formattedDay }),
+        ...(location.startTime && { startTime: location.startTime })
+      };
+
+      // Update task with both task ID and the cleaned fields
+      await updateTask(dragItem.task.id, updatedTask);
+      
+      // Update UI state based on the task's new location
+      const taskWithId = { ...updatedTask, id: dragItem.task.id };
+
+      if (location.type === 'project') {
+        // Remove from previous project if it was in one
+        if (dragItem.sourceLocation.type === 'project') {
+          setProjects(prev => prev.map(project => {
+            if (project.id === dragItem.sourceLocation.projectId) {
+              return {
+                ...project,
+                tasks: project.tasks.filter(t => t.id !== dragItem.task.id)
+              };
+            }
+            return project;
+          }));
+        }
+        // Remove from unassigned tasks if it was there
+        setTasks(prev => prev.filter(t => t.id !== dragItem.task.id));
+        
+        // Add to new project
+        setProjects(prev => prev.map(project => {
+          if (project.id === location.projectId) {
+            return {
+              ...project,
+              tasks: [...project.tasks, taskWithId]
+            };
+          }
+          return project;
+        }));
+      } else if (location.type === 'unassigned') {
+        // Remove from projects if it was in one
+        setProjects(prev => prev.map(project => ({
+          ...project,
+          tasks: project.tasks.filter(t => t.id !== dragItem.task.id)
+        })));
+        
+        // Add to unassigned tasks
+        setTasks(prev => {
+          const exists = prev.some(t => t.id === dragItem.task.id);
+          if (exists) {
+            return prev.map(t => t.id === dragItem.task.id ? taskWithId : t);
+          }
+          return [...prev, taskWithId];
+        });
+      } else if (location.type === 'timeline') {
+        if (dragItem.sourceLocation.type === 'project') {
+          // Update in the project's tasks array
+          setProjects(prev => prev.map(project => {
+            if (project.id === dragItem.sourceLocation.projectId) {
+              return {
+                ...project,
+                tasks: project.tasks.map(t => 
+                  t.id === dragItem.task.id ? taskWithId : t
+                )
+              };
+            }
+            return project;
+          }));
+        } else {
+          // Update in unassigned tasks
+          const taskExists = tasks.some(t => t.id === dragItem.task.id);
+          if (taskExists) {
+            setTasks(prev => prev.map(t => 
+              t.id === dragItem.task.id ? taskWithId : t
+            ));
+          } else {
+            setTasks(prev => [...prev, taskWithId]);
+          }
+        }
+      }
+
+      toast.success('Task moved successfully');
+    } catch (error) {
+      console.error('Error moving task:', error);
+      toast.error('Failed to move task');
+    } finally {
+      handleDragEnd();
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -502,16 +575,63 @@ export function ProjectBoard() {
           <div className="p-4">
             {/* Unassigned Tasks */}
             <div className="mb-6"
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleUnassignedDrop}
+              onDragOver={(e) => {
+                e.preventDefault();
+                const location: TaskLocation = {
+                  type: 'unassigned'
+                };
+                handleDragOver(location);
+                e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const location: TaskLocation = {
+                  type: 'unassigned'
+                };
+                handleDrop(location);
+              }}
             >
               <h2 className="text-sm font-semibold text-gray-500 mb-2">UNASSIGNED TASKS</h2>
               {tasks.filter(t => !t.startTime).map(task => (
                 <div
                   key={task.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(task, e)}
+                  onDragStart={(e) => {
+                    const sourceLocation: TaskLocation = {
+                      type: task.projectId ? 'project' : 'unassigned',
+                      projectId: task.projectId,
+                      day: task.day,
+                      startTime: task.startTime
+                    };
+                    handleDragStart(task, sourceLocation);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    const location: TaskLocation = {
+                      type: task.projectId ? 'project' : 'unassigned',
+                      projectId: task.projectId,
+                      day: task.day,
+                      startTime: task.startTime
+                    };
+                    handleDragOver(location);
+                    e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const location: TaskLocation = {
+                      type: task.projectId ? 'project' : 'unassigned',
+                      projectId: task.projectId,
+                      day: task.day,
+                      startTime: task.startTime
+                    };
+                    handleDrop(location);
+                  }}
                   className="cursor-move group"
                 >
                   <Alert className="mb-2">
@@ -548,9 +668,26 @@ export function ProjectBoard() {
               {projects.map(project => (
                 <div key={project.id} 
                   className="border rounded-lg p-3"
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleProjectDrop(project.id, e)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    const location: TaskLocation = {
+                      type: 'project',
+                      projectId: project.id
+                    };
+                    handleDragOver(location);
+                    e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const location: TaskLocation = {
+                      type: 'project',
+                      projectId: project.id
+                    };
+                    handleDrop(location);
+                  }}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium">{project.title}</h3>
@@ -584,7 +721,39 @@ export function ProjectBoard() {
                         <div
                           key={task.id}
                           draggable
-                          onDragStart={(e) => handleDragStart({ ...task, projectId: project.id }, e)}
+                          onDragStart={(e) => {
+                            const sourceLocation: TaskLocation = {
+                              type: task.projectId ? 'project' : 'unassigned',
+                              projectId: task.projectId,
+                              day: task.day,
+                              startTime: task.startTime
+                            };
+                            handleDragStart(task, sourceLocation);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            const location: TaskLocation = {
+                              type: task.projectId ? 'project' : 'unassigned',
+                              projectId: task.projectId,
+                              day: task.day,
+                              startTime: task.startTime
+                            };
+                            handleDragOver(location);
+                            e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '';
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const location: TaskLocation = {
+                              type: task.projectId ? 'project' : 'unassigned',
+                              projectId: task.projectId,
+                              day: task.day,
+                              startTime: task.startTime
+                            };
+                            handleDrop(location);
+                          }}
                           className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 cursor-move group"
                         >
                           <input
@@ -694,16 +863,43 @@ export function ProjectBoard() {
                         <div
                           key={slot.time}
                           className="h-4 border-b border-gray-100 hover:bg-blue-50 transition-colors cursor-pointer"
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(slot.time, format(date, 'EEE, MMM d'), e)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            const location: TaskLocation = {
+                              type: 'timeline',
+                              day: date.toISOString(),
+                              startTime: slot.time
+                            };
+                            handleDragOver(location);
+                            e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '';
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const location: TaskLocation = {
+                              type: 'timeline',
+                              day: date.toISOString(),
+                              startTime: slot.time
+                            };
+                            handleDrop(location);
+                          }}
                           onClick={() => handleTimeSlotClick(slot.time, format(date, 'yyyy-MM-dd'))}
                         />
                       ))}
 
                       {/* Render all tasks */}
                       {[...tasks, ...projects.flatMap(p => p.tasks)]
-                        .filter(task => task.day === format(date, 'EEE, MMM d') && task.startTime)
+                        .filter(task => {
+                          // Only show tasks that have a day and startTime
+                          if (!task.day || !task.startTime) return false;
+                          
+                          // Check if this task's day matches the current column's date
+                          const taskDay = task.day;
+                          const columnDay = format(date, 'EEE, MMM d');
+                          return taskDay === columnDay;
+                        })
                         .map(task => {
                           const startMinutes = parseInt(task.startTime!.split(':')[0]) * 60 + 
                                            parseInt(task.startTime!.split(':')[1]);
@@ -715,7 +911,14 @@ export function ProjectBoard() {
                               key={task.id}
                               data-task-id={task.id}
                               draggable
-                              onDragStart={(e) => handleDragStart(task, e)}
+                              onDragStart={(e) => {
+                                const sourceLocation: TaskLocation = {
+                                  type: 'timeline',
+                                  day: task.day,
+                                  startTime: task.startTime
+                                };
+                                handleDragStart(task, sourceLocation);
+                              }}
                               className="absolute left-0 right-0 bg-blue-100 border border-blue-300 rounded px-2 text-xs cursor-move group transition-[height]"
                               style={{
                                 top: `${top}px`,
