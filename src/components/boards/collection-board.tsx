@@ -243,66 +243,65 @@ export function CollectionBoard() {
     return slots;
   };
 
-  const handleResizeStart = (task: Task, e: React.MouseEvent<HTMLDivElement>) => {
+  const handleResizeStart = (task: Task, e: React.MouseEvent) => {
     e.stopPropagation();
     const element = e.currentTarget.parentElement;
     if (!element) return;
-
+    
     setResizingTask(task);
     resizeRef.current = {
       startY: e.clientY,
-      startHeight: element.getBoundingClientRect().height,
+      startHeight: element.getBoundingClientRect().height
     };
 
-    const handleMouseMove = async (e: MouseEvent) => {
-      if (!resizingTask || !resizeRef.current || !user) return;
-
-      const diff = e.clientY - resizeRef.current.startY;
-      const newHeight = Math.max(16, resizeRef.current.startHeight + diff);
-      const newDuration = Math.round((newHeight / 16) * 15); // 16px = 15 minutes
-
-      try {
-        await updateTask(resizingTask.id, { duration: newDuration });
-
-        // Update UI
-        if (resizingTask.projectId) {
-          setCollections(collections.map(collection => {
-            if (collection.id === resizingTask.projectId) {
-              return {
-                ...collection,
-                tasks: collection.tasks.map(task => {
-                  if (task.id === resizingTask.id) {
-                    return { ...task, duration: newDuration };
-                  }
-                  return task;
-                }),
-              };
-            }
-            return collection;
-          }));
-        } else {
-          setTasks(tasks.map(task => {
-            if (task.id === resizingTask.id) {
-              return { ...task, duration: newDuration };
-            }
-            return task;
-          }));
-        }
-      } catch (err) {
-        setError('Failed to resize task');
-        console.error(err);
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      
+      const deltaY = e.clientY - resizeRef.current.startY;
+      const newHeight = Math.max(16, resizeRef.current.startHeight + deltaY); // Minimum 1 time slot
+      const newDuration = Math.round((newHeight / 16) * 15); // Convert back to minutes
+      
+      const element = document.querySelector(`[data-task-id="${task.id}"]`);
+      if (element) {
+        element.setAttribute('style', `${element.getAttribute('style')};height: ${newHeight}px`);
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = async () => {
+      if (!resizeRef.current || !resizingTask) return;
+      
+      const element = document.querySelector(`[data-task-id="${task.id}"]`);
+      if (!element) return;
+      
+      const height = element.getBoundingClientRect().height;
+      const newDuration = Math.round((height / 16) * 15); // Convert to minutes
+      
+      try {
+        await updateTask(task.id, { duration: newDuration });
+        // Update local state
+        setTasks(prev => prev.map(t => 
+          t.id === task.id ? { ...t, duration: newDuration } : t
+        ));
+        setCollections(prev => prev.map(collection => ({
+          ...collection,
+          tasks: collection.tasks.map(t => 
+            t.id === task.id ? { ...t, duration: newDuration } : t
+          )
+        })));
+        toast.success('Task duration updated');
+      } catch (err) {
+        console.error('Failed to update task duration:', err);
+        toast.error('Failed to update task duration');
+      }
+      
       setResizingTask(null);
       resizeRef.current = null;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   };
 
   const handleTimeSlotClick = (time: string, date: string) => {
@@ -537,6 +536,66 @@ export function CollectionBoard() {
       console.error(err);
     }
     setEditingListId(null);
+  };
+
+  const handleListDelete = async (collectionId: string) => {
+    if (!user) return;
+
+    try {
+      await deleteProject(collectionId);
+      setCollections(prev => prev.filter(collection => collection.id !== collectionId));
+      toast.success('List deleted successfully');
+    } catch (err) {
+      console.error('Failed to delete list:', err);
+      toast.error('Failed to delete list');
+    }
+  };
+
+  const getEventPosition = (task: Task, allTasks: Task[]) => {
+    if (!task.startTime || !task.day) return null;
+
+    const overlappingTasks = allTasks.filter(t => 
+      t.day === task.day &&
+      t.startTime &&
+      t.id !== task.id &&
+      doesOverlap(task, t)
+    );
+
+    if (overlappingTasks.length === 0) {
+      return { left: '0%', width: '100%' };
+    }
+
+    // Sort tasks by start time to ensure consistent ordering
+    const sortedTasks = [task, ...overlappingTasks].sort((a, b) => {
+      const aMinutes = timeToMinutes(a.startTime!);
+      const bMinutes = timeToMinutes(b.startTime!);
+      return aMinutes - bMinutes;
+    });
+
+    const index = sortedTasks.findIndex(t => t.id === task.id);
+    const totalOverlapping = sortedTasks.length;
+    const width = 100 / totalOverlapping;
+
+    return {
+      left: `${index * width}%`,
+      width: `${width}%`
+    };
+  };
+
+  const doesOverlap = (task1: Task, task2: Task) => {
+    if (!task1.startTime || !task2.startTime) return false;
+    
+    const start1 = timeToMinutes(task1.startTime);
+    const end1 = start1 + (task1.duration || 30);
+    const start2 = timeToMinutes(task2.startTime);
+    const end2 = start2 + (task2.duration || 30);
+
+    return start1 < end2 && end1 > start2;
+  };
+
+  const timeToMinutes = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
   };
 
   if (loading) {
@@ -809,6 +868,14 @@ export function CollectionBoard() {
                           }`}
                         />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                        onClick={() => handleListDelete(collection.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   <Progress 
@@ -923,24 +990,25 @@ export function CollectionBoard() {
         <div className="flex-1 overflow-x-auto">
           <div className="p-4">
             {/* Timeline Header */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 px-16">
               <Button
                 variant="ghost"
-                onClick={() => setCurrentDate(date => addDays(date, -dayColumns))}
+                onClick={() => setCurrentDate(date => addDays(date, -1))}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setCurrentDate(new Date())}
-                >
-                  Today
-                </Button>
+              
+              <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${dayColumns}, 1fr)` }}>
+                {getDaysArray().map(date => (
+                  <div key={date.toString()} className="text-sm font-medium text-center">
+                    {format(date, 'EEEE, MMMM d')}
+                  </div>
+                ))}
               </div>
+
               <Button
                 variant="ghost"
-                onClick={() => setCurrentDate(date => addDays(date, dayColumns))}
+                onClick={() => setCurrentDate(date => addDays(date, 1))}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -963,12 +1031,6 @@ export function CollectionBoard() {
               <div className="ml-16 grid" style={{ gridTemplateColumns: `repeat(${dayColumns}, 1fr)` }}>
                 {getDaysArray().map(date => (
                   <div key={date.toString()} className="border-l relative min-h-[720px]">
-                    <div className="h-12 border-b px-4 flex items-center">
-                      <span className="text-sm font-medium">
-                        {format(date, 'EEEE, MMMM d')}
-                      </span>
-                    </div>
-                    
                     {/* 15-minute drop zones */}
                     <div className="relative">
                       {generateTimeSlots().map((slot) => (
@@ -1021,6 +1083,7 @@ export function CollectionBoard() {
                                            parseInt(task.startTime!.split(':')[1]);
                           const top = ((startMinutes - 8 * 60) / 15) * 16;
                           const height = (task.duration / 15) * 16;
+                          const position = getEventPosition(task, [...tasks, ...collections.flatMap(p => p.tasks)]);
                           
                           return (
                             <div
@@ -1035,10 +1098,12 @@ export function CollectionBoard() {
                                 };
                                 handleDragStart(task, sourceLocation);
                               }}
-                              className="absolute left-0 right-0 bg-blue-100 border border-blue-300 rounded px-2 text-xs cursor-move group transition-[height]"
+                              className="absolute bg-blue-100 border border-blue-300 rounded px-2 text-xs cursor-move group transition-[height]"
                               style={{
                                 top: `${top}px`,
                                 height: `${height}px`,
+                                left: position?.left || '0%',
+                                width: position?.width || '100%',
                                 zIndex: 10
                               }}
                               onClick={() => {
@@ -1047,14 +1112,14 @@ export function CollectionBoard() {
                               }}
                             >
                               <div className="flex items-center justify-between gap-1">
-                                <div className="flex items-center gap-1 flex-1">
-                                  <GripVertical className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  <span className="font-medium">{task.title}</span>
+                                <div className="flex items-center gap-1 flex-1 overflow-hidden">
+                                  <GripVertical className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                                  <span className="font-medium truncate">{task.title}</span>
                                 </div>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600"
+                                  className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 flex-shrink-0"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleTaskDelete(task.id);

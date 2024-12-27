@@ -16,6 +16,7 @@ export interface Task {
   projectId?: string;
   day?: string;
   startTime?: string;
+  column?: number; // For timeline view positioning
 }
 
 export interface DragItem {
