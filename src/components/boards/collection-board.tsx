@@ -35,6 +35,7 @@ export function CollectionBoard() {
   const [isEditingBoardName, setIsEditingBoardName] = useState(false);
   const [boardName, setBoardName] = useState('Collection Board');
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [quickEntryValue, setQuickEntryValue] = useState('');
 
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -615,6 +616,29 @@ export function CollectionBoard() {
     return hours * 60 + minutes;
   };
 
+  // Add quick entry handler
+  const handleQuickEntry = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && quickEntryValue.trim()) {
+      if (!user) return;
+
+      try {
+        const newTask = {
+          title: quickEntryValue.trim(),
+          priority: 'medium' as const,
+          duration: 30,
+          userId: user.uid,
+        };
+        
+        const taskDoc = await addTask(user.uid, newTask);
+        setTasks(prev => [...prev, taskDoc]);
+        setQuickEntryValue(''); // Clear input for next entry
+      } catch (err) {
+        setError('Failed to create task');
+        console.error(err);
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -721,23 +745,20 @@ export function CollectionBoard() {
             >
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-sm font-semibold text-gray-500">UNASSIGNED TASKS</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditingTask({
-                      id: '',
-                      title: '',
-                      priority: 'medium',
-                      duration: 30,
-                      userId: user?.uid || '',
-                    });
-                    setIsTaskDialogOpen(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
               </div>
+              
+              {/* Quick Entry Field */}
+              <input
+                type="text"
+                value={quickEntryValue}
+                onChange={(e) => setQuickEntryValue(e.target.value)}
+                onKeyDown={handleQuickEntry}
+                placeholder="Type task and press Enter..."
+                className="w-full mb-2 px-3 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+
+              {/* Existing Tasks */}
               {tasks.filter(t => !t.startTime).map(task => (
                 <div
                   key={task.id}
@@ -777,21 +798,22 @@ export function CollectionBoard() {
                   }}
                   className="cursor-move group"
                 >
-                  <Alert className="mb-2">
+                  <Alert className="mb-2 px-3 py-1">
                     <AlertDescription>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 h-6">
                         <GripVertical className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <span>{task.title}</span>
+                        <span className="text-sm">{task.title}</span>
                         <div className="ml-auto flex gap-2 opacity-0 group-hover:opacity-100">
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-6 w-6 p-0"
                             onClick={() => {
                               setEditingTask(task);
                               setIsTaskDialogOpen(true);
                             }}
                           >
-                            Edit
+                            <span className="text-xs">Edit</span>
                           </Button>
                           <Button
                             variant="ghost"
