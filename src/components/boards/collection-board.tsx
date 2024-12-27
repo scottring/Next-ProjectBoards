@@ -251,6 +251,9 @@ export function CollectionBoard() {
     const element = e.currentTarget.parentElement;
     if (!element) return;
     
+    // Set a flag indicating we're resizing
+    element.setAttribute('data-resizing', 'true');
+    
     setResizingTask(task);
     resizeRef.current = {
       startY: e.clientY,
@@ -307,15 +310,13 @@ export function CollectionBoard() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
 
-      // Prevent the click event from firing
-      const taskElement = document.querySelector(`[data-task-id="${task.id}"]`);
-      if (taskElement) {
-        const preventClick = (e: Event) => {
-          e.stopPropagation();
-          taskElement.removeEventListener('click', preventClick);
-        };
-        taskElement.addEventListener('click', preventClick);
-      }
+      // Keep the resizing flag for a short while to prevent the click event
+      setTimeout(() => {
+        const taskElement = document.querySelector(`[data-task-id="${task.id}"]`);
+        if (taskElement) {
+          taskElement.removeAttribute('data-resizing');
+        }
+      }, 200);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -572,6 +573,7 @@ export function CollectionBoard() {
   const getEventPosition = (task: Task, allTasks: Task[]) => {
     if (!task.startTime || !task.day) return null;
 
+    // Find all tasks that overlap with the current task in the same day
     const overlappingTasks = allTasks.filter(t => 
       t.day === task.day &&
       t.startTime &&
@@ -583,19 +585,23 @@ export function CollectionBoard() {
       return { left: '0%', width: '100%' };
     }
 
-    // Sort tasks by start time to ensure consistent ordering
-    const sortedTasks = [task, ...overlappingTasks].sort((a, b) => {
-      const aMinutes = timeToMinutes(a.startTime!);
-      const bMinutes = timeToMinutes(b.startTime!);
-      return aMinutes - bMinutes;
+    // Create a group of all overlapping tasks including the current task
+    const group = [task, ...overlappingTasks].sort((a, b) => {
+      // Sort by start time first
+      const aStart = timeToMinutes(a.startTime!);
+      const bStart = timeToMinutes(b.startTime!);
+      if (aStart !== bStart) return aStart - bStart;
+      
+      // If start times are equal, sort by duration (longer events first)
+      return (b.duration || 30) - (a.duration || 30);
     });
 
-    const index = sortedTasks.findIndex(t => t.id === task.id);
-    const totalOverlapping = sortedTasks.length;
-    const width = 100 / totalOverlapping;
+    // Find the position of the current task in the sorted group
+    const position = group.findIndex(t => t.id === task.id);
+    const width = 100 / group.length;
 
     return {
-      left: `${index * width}%`,
+      left: `${position * width}%`,
       width: `${width}%`
     };
   };
@@ -1098,7 +1104,6 @@ export function CollectionBoard() {
                             };
                             handleDrop(location);
                           }}
-                          onClick={() => handleTimeSlotClick(slot.time, format(date, 'yyyy-MM-dd'))}
                         />
                       ))}
 
@@ -1145,7 +1150,12 @@ export function CollectionBoard() {
                                 width: position?.width || '100%',
                                 zIndex: 10
                               }}
-                              onClick={() => {
+                              onClick={(e) => {
+                                const element = e.currentTarget;
+                                // Check if we're currently resizing or just finished resizing
+                                if (resizingTask || element.getAttribute('data-resizing') === 'true') {
+                                  return;
+                                }
                                 setEditingTask(task);
                                 setIsTaskDialogOpen(true);
                               }}
