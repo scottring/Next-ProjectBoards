@@ -88,18 +88,18 @@ export function CollectionBoard() {
   const handleAddCollection = async () => {
     if (!user) return;
 
-    const newCollection: Omit<Project, 'id'> = {
-      title: 'New Collection',
-      tasks: [],
-      progress: 0,
-      userId: user.uid
-    };
-
     try {
-      const collection = await addProject(user.uid, newCollection);
-      setCollections(prev => [...prev, collection]);
+      const newList = {
+        title: 'New List',
+        tasks: [],
+        progress: 0,
+        userId: user.uid,
+      };
+      
+      const docRef = await addProject(user.uid, newList);
+      setCollections([...collections, { ...newList, id: docRef.id }]);
     } catch (err) {
-      setError('Failed to add collection');
+      setError('Failed to create list');
       console.error(err);
     }
   };
@@ -244,7 +244,9 @@ export function CollectionBoard() {
   };
 
   const handleResizeStart = (task: Task, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent dragging the entire event
     e.stopPropagation();
+    
     const element = e.currentTarget.parentElement;
     if (!element) return;
     
@@ -255,26 +257,31 @@ export function CollectionBoard() {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!resizeRef.current) return;
+      if (!resizeRef.current || !resizingTask) return;
       
       const deltaY = e.clientY - resizeRef.current.startY;
-      const newHeight = Math.max(16, resizeRef.current.startHeight + deltaY); // Minimum 1 time slot
-      const newDuration = Math.round((newHeight / 16) * 15); // Convert back to minutes
+      // Round to nearest 15-minute increment (16px = 15 minutes)
+      const roundedDelta = Math.round(deltaY / 16) * 16;
+      const newHeight = Math.max(16, resizeRef.current.startHeight + roundedDelta); // Minimum 1 time slot
       
       const element = document.querySelector(`[data-task-id="${task.id}"]`);
       if (element) {
-        element.setAttribute('style', `${element.getAttribute('style')};height: ${newHeight}px`);
+        element.setAttribute('style', element.getAttribute('style')?.replace(/height:[^;]+;?/, '') + `height: ${newHeight}px;`);
       }
     };
 
-    const handleMouseUp = async () => {
+    const handleMouseUp = async (e: MouseEvent) => {
+      e.stopPropagation(); // Prevent click event from bubbling up
+      
       if (!resizeRef.current || !resizingTask) return;
       
       const element = document.querySelector(`[data-task-id="${task.id}"]`);
       if (!element) return;
       
       const height = element.getBoundingClientRect().height;
-      const newDuration = Math.round((height / 16) * 15); // Convert to minutes
+      // Round to nearest 15-minute increment
+      const roundedHeight = Math.round(height / 16) * 16;
+      const newDuration = Math.round((roundedHeight / 16) * 15); // Convert to minutes
       
       try {
         await updateTask(task.id, { duration: newDuration });
@@ -298,6 +305,16 @@ export function CollectionBoard() {
       resizeRef.current = null;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+
+      // Prevent the click event from firing
+      const taskElement = document.querySelector(`[data-task-id="${task.id}"]`);
+      if (taskElement) {
+        const preventClick = (e: Event) => {
+          e.stopPropagation();
+          taskElement.removeEventListener('click', preventClick);
+        };
+        taskElement.addEventListener('click', preventClick);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -1130,8 +1147,9 @@ export function CollectionBoard() {
                               </div>
                               {/* Resize handle */}
                               <div
-                                className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-500 group-hover:opacity-100 opacity-0 transition-opacity"
+                                className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize bg-transparent hover:bg-blue-200 group-hover:opacity-100 opacity-0 transition-opacity"
                                 onMouseDown={(e) => handleResizeStart(task, e)}
+                                draggable={false} // Prevent dragging of the resize handle
                               />
                             </div>
                           );
