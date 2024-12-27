@@ -1,7 +1,7 @@
 'use client';
 
-import { ProjectBoard } from '../../../../components/boards/project-board';
+import { CollectionBoard } from '../../../../components/boards/collection-board';
 
 export default function BoardPage() {
-  return <ProjectBoard />;
+  return <CollectionBoard />;
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
-import { Plus, Search, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, GripVertical, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -11,27 +11,30 @@ import { getProjects, getTasks, addProject, updateProject, deleteProject, addTas
 import { Project, Task, TaskLocation } from '@/types';
 import dynamic from 'next/dynamic';
 import { useTaskDrag } from '@/hooks/use-task-drag';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 
 const TaskDialog = dynamic(() => import('./task-dialog').then(mod => mod.TaskDialog), {
   ssr: false,
   loading: () => null
 });
 
-export function ProjectBoard() {
+export function CollectionBoard() {
   const { user } = useAuth();
   const [draggingTask, setDraggingTask] = useState<Task | null>(null);
   const [resizingTask, setResizingTask] = useState<Task | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [collections, setCollections] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dayColumns, setDayColumns] = useState(1);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
+  const [editingCollection, setEditingCollection] = useState<Project | null>(null);
+  const [collapsedLists, setCollapsedLists] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingBoardName, setIsEditingBoardName] = useState(false);
+  const [boardName, setBoardName] = useState('Collection Board');
+  const [editingListId, setEditingListId] = useState<string | null>(null);
 
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -69,7 +72,7 @@ export function ProjectBoard() {
           getProjects(user.uid),
           getTasks(user.uid)
         ]);
-        setProjects(projectsData);
+        setCollections(projectsData);
         setTasks(tasksData);
       } catch (err) {
         setError('Failed to load data');
@@ -82,21 +85,21 @@ export function ProjectBoard() {
     loadData();
   }, [user]);
 
-  const handleAddProject = async () => {
+  const handleAddCollection = async () => {
     if (!user) return;
 
-    const newProject: Omit<Project, 'id'> = {
-      title: 'New Project',
+    const newCollection: Omit<Project, 'id'> = {
+      title: 'New Collection',
       tasks: [],
       progress: 0,
       userId: user.uid
     };
 
     try {
-      const project = await addProject(user.uid, newProject);
-      setProjects(prev => [...prev, project]);
+      const collection = await addProject(user.uid, newCollection);
+      setCollections(prev => [...prev, collection]);
     } catch (err) {
-      setError('Failed to add project');
+      setError('Failed to add collection');
       console.error(err);
     }
   };
@@ -126,16 +129,16 @@ export function ProjectBoard() {
         // Update existing task
         await updateTask(editingTask.id, fullTaskData);
         if (editingTask.projectId) {
-          setProjects(projects.map(project => {
-            if (project.id === editingTask.projectId) {
+          setCollections(collections.map(collection => {
+            if (collection.id === editingTask.projectId) {
               return {
-                ...project,
-                tasks: project.tasks.map(task => 
+                ...collection,
+                tasks: collection.tasks.map(task => 
                   task.id === editingTask.id ? { ...task, ...fullTaskData } : task
                 ),
               };
             }
-            return project;
+            return collection;
           }));
         } else {
           setTasks(tasks.map(task => 
@@ -147,14 +150,14 @@ export function ProjectBoard() {
         const newTask = await addTask(user.uid, fullTaskData);
         
         if (fullTaskData.projectId) {
-          setProjects(projects.map(project => {
-            if (project.id === fullTaskData.projectId) {
+          setCollections(collections.map(collection => {
+            if (collection.id === fullTaskData.projectId) {
               return {
-                ...project,
-                tasks: [...project.tasks, newTask],
+                ...collection,
+                tasks: [...collection.tasks, newTask],
               };
             }
-            return project;
+            return collection;
           }));
         } else {
           setTasks(prev => [...prev, newTask]);
@@ -175,11 +178,11 @@ export function ProjectBoard() {
     try {
       await updateTask(taskId, updates);
       if (projectId) {
-        setProjects(projects.map(project => {
-          if (project.id === projectId) {
+        setCollections(collections.map(collection => {
+          if (collection.id === projectId) {
             return {
-              ...project,
-              tasks: project.tasks.map(task => {
+              ...collection,
+              tasks: collection.tasks.map(task => {
                 if (task.id === taskId) {
                   return { ...task, ...updates };
                 }
@@ -187,7 +190,7 @@ export function ProjectBoard() {
               }),
             };
           }
-          return project;
+          return collection;
         }));
       } else {
         setTasks(tasks.map(task => {
@@ -209,9 +212,9 @@ export function ProjectBoard() {
     try {
       await deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId));
-      setProjects(prev => prev.map(project => ({
-        ...project,
-        tasks: project.tasks.filter(t => t.id !== taskId),
+      setCollections(prev => prev.map(collection => ({
+        ...collection,
+        tasks: collection.tasks.filter(t => t.id !== taskId),
       })));
     } catch (err) {
       setError('Failed to delete task');
@@ -263,11 +266,11 @@ export function ProjectBoard() {
 
         // Update UI
         if (resizingTask.projectId) {
-          setProjects(projects.map(project => {
-            if (project.id === resizingTask.projectId) {
+          setCollections(collections.map(collection => {
+            if (collection.id === resizingTask.projectId) {
               return {
-                ...project,
-                tasks: project.tasks.map(task => {
+                ...collection,
+                tasks: collection.tasks.map(task => {
                   if (task.id === resizingTask.id) {
                     return { ...task, duration: newDuration };
                   }
@@ -275,7 +278,7 @@ export function ProjectBoard() {
                 }),
               };
             }
-            return project;
+            return collection;
           }));
         } else {
           setTasks(tasks.map(task => {
@@ -315,13 +318,13 @@ export function ProjectBoard() {
     setIsTaskDialogOpen(true);
   };
 
-  const toggleProjectCollapse = (projectId: string) => {
-    setCollapsedProjects(prev => {
+  const toggleListCollapse = (listId: string) => {
+    setCollapsedLists(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(projectId)) {
-        newSet.delete(projectId);
+      if (newSet.has(listId)) {
+        newSet.delete(listId);
       } else {
-        newSet.add(projectId);
+        newSet.add(listId);
       }
       return newSet;
     });
@@ -347,14 +350,14 @@ export function ProjectBoard() {
       setTasks(prev => prev.filter(t => t.id !== draggingTask.id));
 
       // Add to project
-      setProjects(projects.map(project => {
-        if (project.id === projectId) {
+      setCollections(collections.map(collection => {
+        if (collection.id === projectId) {
           return {
-            ...project,
-            tasks: [...project.tasks, { ...updates, id: draggingTask.id }],
+            ...collection,
+            tasks: [...collection.tasks, { ...updates, id: draggingTask.id }],
           };
         }
-        return project;
+        return collection;
       }));
     } catch (err) {
       setError('Failed to move task to project');
@@ -380,9 +383,9 @@ export function ProjectBoard() {
       await updateTask(draggingTask.id, updates);
 
       // Remove from timeline and projects
-      setProjects(projects.map(project => ({
-        ...project,
-        tasks: project.tasks.filter(t => t.id !== draggingTask.id),
+      setCollections(collections.map(collection => ({
+        ...collection,
+        tasks: collection.tasks.filter(t => t.id !== draggingTask.id),
       })));
 
       // Add to unassigned tasks if not already there
@@ -436,34 +439,34 @@ export function ProjectBoard() {
       if (location.type === 'project') {
         // Remove from previous project if it was in one
         if (dragItem.sourceLocation.type === 'project') {
-          setProjects(prev => prev.map(project => {
-            if (project.id === dragItem.sourceLocation.projectId) {
+          setCollections(prev => prev.map(collection => {
+            if (collection.id === dragItem.sourceLocation.projectId) {
               return {
-                ...project,
-                tasks: project.tasks.filter(t => t.id !== dragItem.task.id)
+                ...collection,
+                tasks: collection.tasks.filter(t => t.id !== dragItem.task.id)
               };
             }
-            return project;
+            return collection;
           }));
         }
         // Remove from unassigned tasks if it was there
         setTasks(prev => prev.filter(t => t.id !== dragItem.task.id));
         
         // Add to new project
-        setProjects(prev => prev.map(project => {
-          if (project.id === location.projectId) {
+        setCollections(prev => prev.map(collection => {
+          if (collection.id === location.projectId) {
             return {
-              ...project,
-              tasks: [...project.tasks, taskWithId]
+              ...collection,
+              tasks: [...collection.tasks, taskWithId]
             };
           }
-          return project;
+          return collection;
         }));
       } else if (location.type === 'unassigned') {
         // Remove from projects if it was in one
-        setProjects(prev => prev.map(project => ({
-          ...project,
-          tasks: project.tasks.filter(t => t.id !== dragItem.task.id)
+        setCollections(prev => prev.map(collection => ({
+          ...collection,
+          tasks: collection.tasks.filter(t => t.id !== dragItem.task.id)
         })));
         
         // Add to unassigned tasks
@@ -476,18 +479,27 @@ export function ProjectBoard() {
         });
       } else if (location.type === 'timeline') {
         if (dragItem.sourceLocation.type === 'project') {
-          // Update in the project's tasks array
-          setProjects(prev => prev.map(project => {
-            if (project.id === dragItem.sourceLocation.projectId) {
+          // Update in the project's tasks array and remove from original project
+          setCollections(prev => prev.map(collection => {
+            if (collection.id === dragItem.sourceLocation.projectId) {
               return {
-                ...project,
-                tasks: project.tasks.map(t => 
+                ...collection,
+                tasks: collection.tasks.map(t => 
                   t.id === dragItem.task.id ? taskWithId : t
-                )
+                ).filter(t => t.id !== dragItem.task.id) // Remove the task from its original location
               };
             }
-            return project;
+            return collection;
           }));
+
+          // Add to unassigned tasks if not already there
+          setTasks(prev => {
+            const exists = prev.some(t => t.id === dragItem.task.id);
+            if (exists) {
+              return prev.map(t => t.id === dragItem.task.id ? taskWithId : t);
+            }
+            return [...prev, taskWithId];
+          });
         } else {
           // Update in unassigned tasks
           const taskExists = tasks.some(t => t.id === dragItem.task.id);
@@ -510,6 +522,23 @@ export function ProjectBoard() {
     }
   };
 
+  const handleListNameUpdate = async (collectionId: string, newName: string) => {
+    if (!user) return;
+
+    try {
+      await updateProject(collectionId, { title: newName });
+      setCollections(prev => prev.map(collection => 
+        collection.id === collectionId 
+          ? { ...collection, title: newName }
+          : collection
+      ));
+    } catch (err) {
+      setError('Failed to update list name');
+      console.error(err);
+    }
+    setEditingListId(null);
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -524,17 +553,49 @@ export function ProjectBoard() {
       <div className="p-4 border-b bg-white">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-bold">Project Board</h1>
-            <div className="flex items-center gap-4 mt-2">
-              <p className="text-gray-600">Started: {format(currentDate, 'MM/dd/yyyy')}</p>
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-            </div>
+            {isEditingBoardName ? (
+              <input
+                type="text"
+                value={boardName}
+                onChange={(e) => setBoardName(e.target.value)}
+                onBlur={() => setIsEditingBoardName(false)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsEditingBoardName(false);
+                  }
+                }}
+                className="text-2xl font-bold bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                autoFocus
+              />
+            ) : (
+              <h1 
+                className="text-2xl font-bold cursor-pointer hover:bg-gray-100 rounded px-1" 
+                onClick={() => setIsEditingBoardName(true)}
+              >
+                {boardName}
+              </h1>
+            )}
+            <p className="text-gray-600 mt-2">Started: {format(currentDate, 'MM/dd/yyyy')}</p>
           </div>
+
           <div className="flex items-center gap-4">
+            {/* Day view selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Day View:</span>
+              <div className="flex gap-2">
+                {[1, 2, 3, 7].map(num => (
+                  <Button
+                    key={num}
+                    variant={dayColumns === num ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDayColumns(num)}
+                  >
+                    {num}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
             <Button
               variant="outline"
               size="sm"
@@ -549,28 +610,16 @@ export function ProjectBoard() {
             </Button>
           </div>
         </div>
-
-        {/* Day view selector */}
-        <div className="flex items-center gap-4 mt-4">
-          <span className="text-sm font-medium">Day View:</span>
-          <div className="flex gap-2">
-            {[1, 2, 3, 7].map(num => (
-              <Button
-                key={num}
-                variant={dayColumns === num ? "default" : "outline"}
-                size="sm"
-                onClick={() => setDayColumns(num)}
-              >
-                {num}
-              </Button>
-            ))}
-          </div>
-        </div>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Projects Sidebar */}
+        {/* Collections Sidebar */}
         <div className="w-72 border-r bg-white overflow-y-auto">
           <div className="p-4">
             {/* Unassigned Tasks */}
@@ -594,7 +643,25 @@ export function ProjectBoard() {
                 handleDrop(location);
               }}
             >
-              <h2 className="text-sm font-semibold text-gray-500 mb-2">UNASSIGNED TASKS</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-gray-500">UNASSIGNED TASKS</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditingTask({
+                      id: '',
+                      title: '',
+                      priority: 'medium',
+                      duration: 30,
+                      userId: user?.uid || '',
+                    });
+                    setIsTaskDialogOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
               {tasks.filter(t => !t.startTime).map(task => (
                 <div
                   key={task.id}
@@ -639,17 +706,26 @@ export function ProjectBoard() {
                       <div className="flex items-center gap-2">
                         <GripVertical className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
                         <span>{task.title}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto opacity-0 group-hover:opacity-100"
-                          onClick={() => {
-                            setEditingTask(task);
-                            setIsTaskDialogOpen(true);
-                          }}
-                        >
-                          Edit
-                        </Button>
+                        <div className="ml-auto flex gap-2 opacity-0 group-hover:opacity-100">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingTask(task);
+                              setIsTaskDialogOpen(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                            onClick={() => handleTaskDelete(task.id)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </AlertDescription>
                   </Alert>
@@ -657,22 +733,22 @@ export function ProjectBoard() {
               ))}
             </div>
 
-            {/* Projects */}
+            {/* Collections */}
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold text-gray-500">PROJECTS</h2>
-                <Button variant="ghost" size="sm" onClick={handleAddProject}>
+                <h2 className="text-sm font-semibold text-gray-500">LISTS</h2>
+                <Button variant="ghost" size="sm" onClick={handleAddCollection}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              {projects.map(project => (
-                <div key={project.id} 
+              {collections.map(collection => (
+                <div key={collection.id} 
                   className="border rounded-lg p-3"
                   onDragOver={(e) => {
                     e.preventDefault();
                     const location: TaskLocation = {
                       type: 'project',
-                      projectId: project.id
+                      projectId: collection.id
                     };
                     handleDragOver(location);
                     e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
@@ -684,40 +760,67 @@ export function ProjectBoard() {
                     e.preventDefault();
                     const location: TaskLocation = {
                       type: 'project',
-                      projectId: project.id
+                      projectId: collection.id
                     };
                     handleDrop(location);
                   }}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium">{project.title}</h3>
+                    {editingListId === collection.id ? (
+                      <input
+                        type="text"
+                        value={collection.title}
+                        onChange={(e) => {
+                          setCollections(prev => prev.map(c => 
+                            c.id === collection.id 
+                              ? { ...c, title: e.target.value }
+                              : c
+                          ));
+                        }}
+                        onBlur={() => handleListNameUpdate(collection.id, collection.title)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleListNameUpdate(collection.id, collection.title);
+                          }
+                        }}
+                        className="font-medium bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
+                        autoFocus
+                      />
+                    ) : (
+                      <h3 
+                        className="font-medium cursor-pointer hover:bg-gray-100 rounded px-1"
+                        onClick={() => setEditingListId(collection.id)}
+                      >
+                        {collection.title}
+                      </h3>
+                    )}
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">
-                        {project.tasks.filter(t => t.completed).length}/{project.tasks.length}
+                        {collection.tasks.filter(t => t.completed).length}/{collection.tasks.length}
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleProjectCollapse(project.id)}
+                        onClick={() => toggleListCollapse(collection.id)}
                       >
                         <ChevronRight
                           className={`h-4 w-4 transition-transform ${
-                            collapsedProjects.has(project.id) ? '' : 'rotate-90'
+                            collapsedLists.has(collection.id) ? '' : 'rotate-90'
                           }`}
                         />
                       </Button>
                     </div>
                   </div>
                   <Progress 
-                    value={project.tasks.length > 0 
-                      ? (project.tasks.filter(t => t.completed).length / project.tasks.length) * 100
+                    value={collection.tasks.length > 0 
+                      ? (collection.tasks.filter(t => t.completed).length / collection.tasks.length) * 100
                       : 0
                     } 
                     className="h-1 mb-3" 
                   />
-                  {!collapsedProjects.has(project.id) && (
+                  {!collapsedLists.has(collection.id) && (
                     <div className="space-y-2">
-                      {project.tasks.map(task => (
+                      {collection.tasks.map(task => (
                         <div
                           key={task.id}
                           draggable
@@ -759,7 +862,7 @@ export function ProjectBoard() {
                           <input
                             type="checkbox"
                             checked={task.completed}
-                            onChange={(e) => handleTaskUpdate(project.id, task.id, { completed: e.target.checked })}
+                            onChange={(e) => handleTaskUpdate(collection.id, task.id, { completed: e.target.checked })}
                             className="h-4 w-4"
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -767,17 +870,26 @@ export function ProjectBoard() {
                           <span className={task.completed ? 'line-through text-gray-400' : ''}>
                             {task.title}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="ml-auto opacity-0 group-hover:opacity-100"
-                            onClick={() => {
-                              setEditingTask({ ...task, projectId: project.id });
-                              setIsTaskDialogOpen(true);
-                            }}
-                          >
-                            Edit
-                          </Button>
+                          <div className="ml-auto flex gap-2 opacity-0 group-hover:opacity-100">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingTask({ ...task, projectId: collection.id });
+                                setIsTaskDialogOpen(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                              onClick={() => handleTaskDelete(task.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       <Button
@@ -790,7 +902,7 @@ export function ProjectBoard() {
                             title: '',
                             priority: 'medium',
                             duration: 30,
-                            projectId: project.id,
+                            projectId: collection.id,
                             userId: user?.uid || '',
                           });
                           setIsTaskDialogOpen(true);
@@ -890,8 +1002,12 @@ export function ProjectBoard() {
                       ))}
 
                       {/* Render all tasks */}
-                      {[...tasks, ...projects.flatMap(p => p.tasks)]
-                        .filter(task => {
+                      {[...tasks, ...collections.flatMap(p => p.tasks)]
+                        .filter((task, index, self) => {
+                          // Remove duplicates by ID
+                          const firstIndex = self.findIndex(t => t.id === task.id);
+                          if (index !== firstIndex) return false;
+
                           // Only show tasks that have a day and startTime
                           if (!task.day || !task.startTime) return false;
                           
@@ -930,9 +1046,22 @@ export function ProjectBoard() {
                                 setIsTaskDialogOpen(true);
                               }}
                             >
-                              <div className="flex items-center gap-1">
-                                <GripVertical className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <span className="font-medium">{task.title}</span>
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 flex-1">
+                                  <GripVertical className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  <span className="font-medium">{task.title}</span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleTaskDelete(task.id);
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
                               </div>
                               {/* Resize handle */}
                               <div
