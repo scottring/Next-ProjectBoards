@@ -11,7 +11,31 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Project, Task } from '@/types';
+import { Project, Task, Board } from '@/types';
+
+// Boards
+export const getBoards = async (userId: string) => {
+  const boardsRef = collection(db, 'boards');
+  const q = query(boardsRef, where('userId', '==', userId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Board));
+};
+
+export const addBoard = async (userId: string, board: Omit<Board, 'id'>) => {
+  const boardsRef = collection(db, 'boards');
+  const docRef = await addDoc(boardsRef, { ...board, userId });
+  return { id: docRef.id, ...board } as Board;
+};
+
+export const updateBoard = async (boardId: string, updates: Partial<Board>) => {
+  const boardRef = doc(db, 'boards', boardId);
+  await updateDoc(boardRef, updates);
+};
+
+export const deleteBoard = async (boardId: string) => {
+  const boardRef = doc(db, 'boards', boardId);
+  await deleteDoc(boardRef);
+};
 
 // Projects
 export const getProjects = async (userId: string) => {

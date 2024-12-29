@@ -12,6 +12,7 @@ export interface Task {
   duration: number;
   completed?: boolean;
   userId: string;
+  boardId: string;
   // Location properties
   projectId?: string;
   day?: string;
@@ -29,4 +30,19 @@ export interface Project {
   tasks: Task[];
   progress: number;
   userId: string;
+  boardId: string;
+}
+
+export interface Board {
+  id: string;
+  name: string;
+  description: string;
+  tasks: Task[];
+  userId: string;
+  settings: {
+    layout: {
+      showSidebar: boolean;
+      showTimeline: boolean;
+    };
+  };
 } 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useBoardStore } from '@/lib/store/board-store';
+import { useAuth } from '@/contexts/auth-context';
 import {
   Dialog,
   DialogContent,
@@ -20,11 +21,14 @@ export function BoardCreateDialog() {
   const [description, setDescription] = useState('');
   const router = useRouter();
   const { createBoard } = useBoardStore();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+
     try {
-      const board = await createBoard({
+      const board = await createBoard(user.uid, {
         name,
         description,
         tasks: [],

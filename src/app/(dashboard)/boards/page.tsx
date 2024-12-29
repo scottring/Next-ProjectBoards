@@ -2,14 +2,18 @@
 
 import { useEffect } from 'react';
 import { useBoardStore } from '@/lib/store/board-store';
+import { useAuth } from '@/contexts/auth-context';
 import { BoardCreateDialog } from '@/components/boards/board-create-dialog';
 
 export default function BoardsPage() {
   const { boards, fetchBoards } = useBoardStore();
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchBoards();
-  }, [fetchBoards]);
+    if (user) {
+      fetchBoards(user.uid);
+    }
+  }, [fetchBoards, user]);
 
   return (
     <div className="container py-6">

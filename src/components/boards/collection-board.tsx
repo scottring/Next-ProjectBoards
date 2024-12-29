@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { Plus, Search, ChevronLeft, ChevronRight, GripVertical, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { getProjects, getTasks, addProject, updateProject, deleteProject, addTas
 import { Project, Task, TaskLocation } from '@/types';
 import dynamic from 'next/dynamic';
 import { useTaskDrag } from '@/hooks/use-task-drag';
+import { useBoardStore } from '@/lib/store/board-store';
 import toast from 'react-hot-toast';
 
 const TaskDialog = dynamic(() => import('./task-dialog').then(mod => mod.TaskDialog), {
@@ -18,7 +19,16 @@ const TaskDialog = dynamic(() => import('./task-dialog').then(mod => mod.TaskDia
   loading: () => null
 });
 
-export function CollectionBoard() {
+interface TimeSlot {
+  time: string;
+  height: string;
+}
+
+interface CollectionBoardProps {
+  boardId: string;
+}
+
+export function CollectionBoard({ boardId }: CollectionBoardProps) {
   const { user } = useAuth();
   const [draggingTask, setDraggingTask] = useState<Task | null>(null);
   const [resizingTask, setResizingTask] = useState<Task | null>(null);
@@ -64,7 +74,7 @@ export function CollectionBoard() {
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
-      if (!user) return;
+      if (!user || !boardId) return;
       
       try {
         setLoading(true);
@@ -72,8 +82,19 @@ export function CollectionBoard() {
           getProjects(user.uid),
           getTasks(user.uid)
         ]);
-        setCollections(projectsData);
-        setTasks(tasksData);
+        
+        // Filter tasks for this board
+        const boardTasks = tasksData.filter(task => task.boardId === boardId);
+        const boardProjects = projectsData.filter(project => project.boardId === boardId);
+        
+        setCollections(boardProjects);
+        setTasks(boardTasks);
+        
+        // Set board name
+        const board = await useBoardStore.getState().boards.find(b => b.id === boardId);
+        if (board) {
+          setBoardName(board.name);
+        }
       } catch (err) {
         setError('Failed to load data');
         console.error(err);
@@ -83,7 +104,7 @@ export function CollectionBoard() {
     };
 
     loadData();
-  }, [user]);
+  }, [user, boardId]);
 
   const handleAddCollection = async () => {
     if (!user) return;
@@ -92,7 +113,8 @@ export function CollectionBoard() {
       title: 'New Collection',
       tasks: [],
       progress: 0,
-      userId: user.uid
+      userId: user.uid,
+      boardId: boardId
     };
 
     try {
@@ -223,7 +245,7 @@ export function CollectionBoard() {
   };
 
   const getDaysArray = () => {
-    const days = [];
+    const days: Date[] = [];
     for (let i = 0; i < dayColumns; i++) {
       days.push(addDays(currentDate, i));
     }
@@ -231,7 +253,7 @@ export function CollectionBoard() {
   };
 
   const generateTimeSlots = () => {
-    const slots = [];
+    const slots: TimeSlot[] = [];
     for (let hour = 8; hour < 20; hour++) {
       for (let minute = 0; minute < 60; minute += 15) {
         slots.push({
