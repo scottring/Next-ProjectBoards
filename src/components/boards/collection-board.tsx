@@ -45,6 +45,7 @@ export function CollectionBoard({ boardId }: CollectionBoardProps) {
   const [isEditingBoardName, setIsEditingBoardName] = useState(false);
   const [boardName, setBoardName] = useState('Collection Board');
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  const { updateBoard } = useBoardStore();
 
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -561,6 +562,16 @@ export function CollectionBoard({ boardId }: CollectionBoardProps) {
     setEditingListId(null);
   };
 
+  const handleBoardNameChange = async () => {
+    if (!boardId) return;
+    try {
+      await updateBoard(boardId, { name: boardName });
+      setIsEditingBoardName(false);
+    } catch (err) {
+      console.error('Failed to update board name:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -580,10 +591,10 @@ export function CollectionBoard({ boardId }: CollectionBoardProps) {
                 type="text"
                 value={boardName}
                 onChange={(e) => setBoardName(e.target.value)}
-                onBlur={() => setIsEditingBoardName(false)}
+                onBlur={handleBoardNameChange}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    setIsEditingBoardName(false);
+                    handleBoardNameChange();
                   }
                 }}
                 className="text-2xl font-bold bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-1"
@@ -684,6 +695,33 @@ export function CollectionBoard({ boardId }: CollectionBoardProps) {
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+              <input
+                type="text"
+                placeholder="Type task and press Enter"
+                className="w-full mb-2 px-3 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && e.currentTarget.value.trim() && user) {
+                    const value = e.currentTarget.value.trim();
+                    e.currentTarget.value = ''; // Clear immediately on Enter
+                    
+                    try {
+                      const newTask = await addTask(user.uid, {
+                        title: value,
+                        priority: 'medium',
+                        duration: 30,
+                        userId: user.uid,
+                        boardId: boardId,
+                        completed: false
+                      });
+                      setTasks(prev => [...prev, newTask]);
+                    } catch (err) {
+                      setError('Failed to add task');
+                      console.error(err);
+                      e.currentTarget.value = value; // Restore value if there's an error
+                    }
+                  }
+                }}
+              />
               {tasks.filter(t => !t.startTime).map(task => (
                 <div
                   key={task.id}
